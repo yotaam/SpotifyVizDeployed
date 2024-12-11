@@ -496,12 +496,12 @@
                                 window.moodFeatureStats = moodFeatures.reduce((stats, feature) => {
                                     const allValues = filteredData
                                         .map((d) => parseValue(d[feature]))
-                                        .filter((v) => v != null);
+                                        .filter((v) => v != null && v > 0); // Log scale requires positive values
 
-                                    const minRange = d3.min(allValues); 
-                                    const stdDev = d3.deviation(allValues);
+                                    const minLog = d3.min(allValues.map(Math.log));
+                                    const maxLog = d3.max(allValues.map(Math.log));
 
-                                    stats[feature] = { minRange, stdDev }; 
+                                    stats[feature] = { minLog, maxLog }; // Store log-transformed min and max
                                     return stats;
                                 }, {});
                             }
@@ -509,29 +509,28 @@
 
 
 
+
   
-                        const moodAverages = {};
-                        moodFeatures.forEach((feature) => {
-                            const values = records.map((d) => parseValue(d[feature])).filter((v) => v != null);
-                            if (values.length) {
-                                const avg = d3.mean(values); 
+                            const moodAverages = {};
+                            moodFeatures.forEach((feature) => {
+                                const values = records
+                                    .map((d) => parseValue(d[feature]))
+                                    .filter((v) => v != null && v > 0); // Ensure positive values for log
 
-                                const { minRange, stdDev } = window.moodFeatureStats[feature];
-                                const maxRange = minRange + 2 * stdDev; // clamping idea to two stdev above minRange to deal with outliers
-                                if (avg <= minRange) {
-                                    moodAverages[feature] = 50; 
-                                } else if (avg >= maxRange) {
-                                    moodAverages[feature] = 255; 
-                                } else {
+                                if (values.length) {
+                                    const avg = d3.mean(values);
+                                    const avgLog = Math.log(avg);
+
+                                    const { minLog, maxLog } = window.moodFeatureStats[feature];
+
                                     moodAverages[feature] = Math.round(
-                                        ((avg - minRange) / (maxRange - minRange)) * 205
+                                        ((avgLog - minLog) / (maxLog - minLog)) * 205 + 50
                                     );
+                                } else {
+                                    moodAverages[feature] = null; // Default to null if no valid data
                                 }
+                            });
 
-                            } else {
-                                moodAverages[feature] = null; 
-                            }
-                        });
 
 
 
