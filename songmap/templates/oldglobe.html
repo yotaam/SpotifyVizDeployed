@@ -1,0 +1,142 @@
+HERE LIES MY FUNCTIONAL VERSION OF THE GLOBE WHERE HIGHLIGHTED COUNTRIES WITH MOUSE HOVER APPEAR IN YELLOW. PLEASE REFER CLOSELY TO THIS WORKING FUNCTIONALITY FOR COLORING COUNTRIES BECAUSE THIS IS WHAT WORKS.
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Interactive Hex Polygons with Persistent Colors</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+    </style>
+
+    <!-- Import map for Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "//unpkg.com/three/build/three.module.js",
+                "three/addons/": "//unpkg.com/three/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        window.THREE = THREE;
+    </script>
+    <!-- Load Three-Globe -->
+    <script src="//unpkg.com/three-globe" defer></script>
+</head>
+<body>
+    <div id="globeViz"></div>
+    <script type="module">
+        import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
+
+        // Fetch country polygons GeoJSON
+        fetch('https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json')
+            .then(res => res.json())
+            .then(countries => {
+                // Initialize color mapping
+                const colorMapping = {};
+
+                // Initialize the globe
+                const Globe = new ThreeGlobe()
+                    .globeImageUrl('//unpkg.com/three-globe/example/img/earth-dark.jpg')
+                    .hexPolygonsData(countries.features) // Load hex polygons
+                    .hexPolygonResolution(3) // Hex resolution
+                    .hexPolygonMargin(0) // Reduced gaps between polygons
+                    .hexPolygonAltitude(() => 0.005) // Slightly increased altitude
+                    .hexPolygonColor((polygon) => {
+                        // Assign a random color only once per polygon
+                        if (!colorMapping[polygon.properties.ADMIN]) {
+                            colorMapping[polygon.properties.ADMIN] = `#${Math.round(Math.random() * Math.pow(2, 24)).toString(16).padStart(6, '0')}`;
+                        }
+                        return colorMapping[polygon.properties.ADMIN];
+                    });
+
+                // Setup renderer
+                const renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                document.getElementById('globeViz').appendChild(renderer.domElement);
+
+                // Setup scene
+                const scene = new THREE.Scene();
+                scene.add(Globe);
+                scene.add(new THREE.AmbientLight(0xcccccc, Math.PI));
+                scene.add(new THREE.DirectionalLight(0xffffff, 0.6 * Math.PI));
+
+                // Setup camera
+                const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+                camera.position.z = 500;
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+
+                // Add camera controls
+                const tbControls = new TrackballControls(camera, renderer.domElement);
+                tbControls.minDistance = 101;
+                tbControls.rotateSpeed = 5;
+                tbControls.zoomSpeed = 0.8;
+
+                // Raycaster for hover interactions
+                const raycaster = new THREE.Raycaster();
+                const mouse = new THREE.Vector2();
+
+                let hoveredPolygon = null;
+
+                // Mouse move handler
+                function onMouseMove(event) {
+                    // Convert mouse position to normalized device coordinates
+                    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+                    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+                    // Update raycaster and find intersections
+                    raycaster.setFromCamera(mouse, camera);
+                    const intersects = raycaster.intersectObjects(Globe.children, true);
+
+                    if (intersects.length) {
+                        const intersectedPolygon = intersects[0].object.__data; // Access polygon data
+                        if (hoveredPolygon !== intersectedPolygon) {
+                            hoveredPolygon = intersectedPolygon;
+
+                            // Update hex polygon properties
+                            Globe.hexPolygonColor((polygon) =>
+                                polygon === hoveredPolygon
+                                    ? 'rgba(255, 215, 0, 0.8)' // Highlight color
+                                    : colorMapping[polygon.properties.ADMIN] // Preserve original random color
+                            );
+                            Globe.hexPolygonAltitude((polygon) =>
+                                polygon === hoveredPolygon ? 0.03 : 0.005
+                            ); // Elevate hovered polygon
+                        }
+                    } else {
+                        // Reset properties when no hover
+                        if (hoveredPolygon !== null) {
+                            hoveredPolygon = null;
+                            Globe.hexPolygonColor((polygon) => colorMapping[polygon.properties.ADMIN]);
+                            Globe.hexPolygonAltitude(() => 0.005); // Reset all polygons
+                        }
+                    }
+                }
+
+                // Add mousemove listener
+                window.addEventListener('mousemove', onMouseMove);
+
+                // Animation loop
+                function animate() {
+                    tbControls.update();
+                    renderer.render(scene, camera);
+                    requestAnimationFrame(animate);
+                }
+                animate();
+
+                // Resize handler
+                window.addEventListener('resize', () => {
+                    renderer.setSize(window.innerWidth, window.innerHeight);
+                    camera.aspect = window.innerWidth / window.innerHeight;
+                    camera.updateProjectionMatrix();
+                });
+            })
+            .catch(err => console.error('Error loading GeoJSON:', err));
+    </script>
+</body>
+</html>

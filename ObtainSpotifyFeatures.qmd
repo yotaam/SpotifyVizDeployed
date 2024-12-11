@@ -1,0 +1,171 @@
+---
+title: "Songs"
+format: pdf
+editor: visual
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+1 + 1
+```
+
+You can add options to executable code like this
+
+```{r}
+data = read.csv("/Users/yotamtwersky/Downloads/universal_top_spotify_songs.csv", header = TRUE)
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
+
+```{r}
+data.head()
+```
+
+```{r}
+library(httr)
+library(jsonlite)
+library(dplyr)
+
+
+fetch_audio_features_batch <- function(ids, access_token) {
+  url <- paste0("https://api.spotify.com/v1/audio-features?ids=", paste(ids, collapse = ","))
+
+  res <- GET(
+    url,
+    add_headers(Authorization = paste("Bearer", access_token))
+  )
+  
+  # rate limiting fix
+  if (status_code(res) == 429) {
+    retry_after <- headers(res)$`retry-after`
+    if (is.null(retry_after) || !is.numeric(as.numeric(retry_after))) {
+      retry_after <- 31 # Default to 31 seconds
+    } else {
+      retry_after <- as.numeric(retry_after)
+    }
+    cat("Rate limited, delay:", retry_after, "seconds\n")
+    Sys.sleep(retry_after)
+    return(fetch_audio_features_batch(ids, access_token))
+  }
+  
+
+  if (status_code(res) == 200) {
+    content_text <- content(res, as = "text")
+    content_json <- fromJSON(content_text, flatten = TRUE)
+    features <- content_json$audio_features
+    if (is.null(features)) {
+      cat("No audio features found in response.\n")
+      return(NULL)
+    }
+    # Remove null
+    features <- features[!sapply(features, is.null)]
+    if (length(features) == 0) {
+      cat("All features are NULL for this batch.\n")
+      return(NULL)
+    }
+    features_df <- bind_rows(features)
+    return(features_df)
+  } else {
+    cat("Error Code:", status_code(res), "\n")
+    return(NULL)
+  }
+}
+
+# audio features for unique Spotify IDs
+add_audio_features <- function(data, access_token, batch_size = 100) {
+
+  unique_ids <- unique(data$spotify_id)
+  id_batches <- split(unique_ids, ceiling(seq_along(unique_ids) / batch_size))
+  
+  audio_features_list <- list()
+  
+
+  for (i in seq_along(id_batches)) {
+    batch <- id_batches[[i]]
+    cat("Fetching batch", i, "of size:", length(batch), "\n")
+    
+    features_df <- fetch_audio_features_batch(batch, access_token)
+    
+    if (!is.null(features_df) && nrow(features_df) > 0) {
+      cat("Fetched", nrow(features_df), "features from batch", i, "\n")
+      audio_features_list[[length(audio_features_list) + 1]] <- features_df
+    } else {
+      cat("Batch", i, "failed or returned no data.\n")
+    }
+  }
+  
+
+  if (length(audio_features_list) == 0) {
+    stop("No audio features fetched.")
+  }
+  
+  final_audio_features <- bind_rows(audio_features_list)
+  
+  # clean names
+  colnames(final_audio_features) <- sub("\\.\\d+$", "", colnames(final_audio_features))
+  
+  return(final_audio_features)
+}
+
+data <- read.csv("/Users/yotamtwersky/Downloads/universal_top_spotify_songs.csv", header = TRUE)
+
+client_id <- #Redacted for GitHub push
+client_secret <- #Redacted for GitHub push
+token_url <- "https://accounts.spotify.com/api/token"
+
+res_token <- POST(
+  token_url,
+  add_headers(`Content-Type` = "application/x-www-form-urlencoded"),
+  body = list(
+    grant_type = "client_credentials",
+    client_id = client_id,
+    client_secret = client_secret
+  ),
+  encode = "form"
+)
+# get token
+token_content <- fromJSON(content(res_token, as = "text"))
+access_token <- token_content$access_token
+
+final_data <- add_audio_features(data, access_token)
+
+View(final_data)
+write.csv(final_data, "/Users/yotamtwersky/Downloads/universal_top_spotify_songs_with_features.csv", row.names = FALSE)
+
+
+```
+
+```{r}
+deduplicated_data <- data[!duplicated(data$spotify_id), ]
+
+# match columnbs
+colnames(final_data)[colnames(final_data) == "id"] <- "spotify_id"
+
+
+deduplicated_data$artists_list <- strsplit(deduplicated_data$artists, ", ")
+
+final_data_with_details <- merge(
+  final_data,
+  deduplicated_data[, c("spotify_id", "name", "artists_list")],
+  by = "spotify_id",
+  all.x = TRUE
+)
+
+colnames(final_data_with_details)[colnames(final_data_with_details) == "name"] <- "track_name"
+colnames(final_data_with_details)[colnames(final_data_with_details) == "artists_list"] <- "artist_names"
+
+# keep first artist
+final_data_with_details$artist_names <- sapply(final_data_with_details$artist_names, function(x) x[1])
+
+write.csv(final_data_with_details, "/Users/yotamtwersky/Downloads/universal_top_spotify_songs_with_details.csv", row.names = FALSE)
+View(final_data_with_details)
+
+
+```

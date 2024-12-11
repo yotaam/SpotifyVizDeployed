@@ -1,0 +1,192 @@
+---
+title: "Working with the dataset"
+format: html
+editor: source
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+1 + 1
+```
+
+You can add options to executable code like this
+
+```{r}
+#| echo: false
+2 * 2
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
+
+GETTING MOOD SCORES
+
+```{r}
+all_song_data_before <- read.csv("spotify_data_with_lyrics_matched.csv")
+```
+
+```{r}
+library(dplyr)
+```
+
+```{r}
+library(stringr)
+all_song_just_lyrics <- all_song_data_before |>
+  mutate(lyrics = str_remove(lyrics, "^.*\\n"))
+```
+
+```{r}
+library(tidytext)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(syuzhet)
+
+
+# Tokenize lyrics into individual words
+all_song_tokenized_lyrics <- all_song_just_lyrics |>
+  unnest_tokens(word, lyrics)
+```
+
+```{r}
+library(textdata)
+library(tidyr)
+# Get NRC sentiment lexicon
+nrc_sentiments <- get_sentiments("nrc")
+
+# Join tokenized data with NRC sentiments
+song_sentiments <- all_song_tokenized_lyrics |>
+  inner_join(nrc_sentiments, by = "word")
+
+# Count emotions per song
+emotion_scores <- song_sentiments |>
+  count(spotify_id, sentiment) |>
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0)
+
+# View emotion scores for each song
+print(emotion_scores)
+```
+
+```{r}
+# Load the dplyr package
+library(dplyr)
+# Perform the join
+mood_scores_combined_song_data <- all_song_just_lyrics |>
+  left_join(emotion_scores, by = "spotify_id")  # Join by spotify_id
+View(mood_scores_combined_song_data)
+```
+
+```{r}
+write.csv(mood_scores_combined_song_data, file = "song_data_with_mood_scores.csv", row.names = FALSE)
+```
+
+
+NOW FOR GETTING THE MOST POPULAR WORDS
+
+```{r}
+top_songs <- read.csv("universal_top_spotify_songs.csv")
+View(top_songs)
+```
+
+```{r}
+top_songs_dates <- as.Date(top_songs$snapshot_date)
+
+
+# Define the date range
+start_date <- as.Date("2023-11-11")
+end_date <- as.Date("2024-11-11")
+
+# Filter rows within the date range
+top_songs_correct_dates <- top_songs |>
+  filter(snapshot_date >= start_date & snapshot_date <= end_date)
+
+print(top_songs_correct_dates)
+```
+
+```{r}
+# Load required libraries
+library(data.table)
+library(tidytext)
+library(jsonlite)
+
+# Convert datasets to data.table (if not already)
+combined_song_data <- as.data.table(top_songs)
+all_song_just_lyrics <- as.data.table(all_song_just_lyrics)
+
+# Merge the datasets
+combined_song_data <- merge(combined_song_data, all_song_just_lyrics, by = "spotify_id", all.x = TRUE)
+
+# Check for missing or empty lyrics and remove them
+combined_song_data <- combined_song_data[!is.na(lyrics) & lyrics != "", ]
+
+# Load stop words
+stop_words <- tidytext::stop_words$word
+stop_word_set <- unique(tolower(stop_words))
+
+# Function to process a single country's data
+process_country <- function(country_data, stop_word_set) {
+  # Aggregate lyrics by date
+  aggregated <- country_data[, list(all_lyrics = paste(lyrics, collapse = " ")), by = snapshot_date]
+  
+  # Compute word dictionary for each date (top 30 words by frequency)
+  aggregated[, word_dictionary := lapply(all_lyrics, function(lyrics) {
+    if (is.null(lyrics) || lyrics == "") return("{}")  # Return empty JSON if no lyrics
+    
+    # Tokenize and remove stop words
+    tokens <- unlist(strsplit(tolower(lyrics), "\\W+"))
+    tokens <- tokens[tokens != "" & !tokens %in% stop_word_set]
+    
+    # Compute word frequencies and filter for top 30
+    word_freq <- as.data.table(table(tokens))
+    setnames(word_freq, c("tokens", "N"))
+    top_words <- word_freq[order(-N)][1:30]  # Top 30 words
+    
+    # Convert to dictionary and then JSON
+    dictionary <- setNames(as.list(top_words$N), top_words$tokens)
+    toJSON(dictionary, auto_unbox = TRUE)  # Convert to JSON string
+  })]
+  
+  # Drop intermediate lyrics to save memory
+  aggregated[, all_lyrics := NULL]
+  
+  return(aggregated)
+}
+
+# Split the data by country
+country_groups <- split(combined_song_data, combined_song_data$country)
+
+# Define a file to save results incrementally
+output_file <- "song_lyric_word_dict.json"
+
+# Write the header to the file
+fwrite(data.table(country = character(), snapshot_date = character(), word_dictionary = character()), 
+       file = output_file, sep = ",", append = FALSE, col.names = TRUE)
+
+# Process each country's data
+for (country_name in names(country_groups)) {
+  cat("Processing country:", country_name, "\n")
+  
+  # Safeguard against unexpected errors
+  tryCatch({
+    country_data <- country_groups[[country_name]]
+    country_result <- process_country(country_data, stop_word_set)
+    
+    # Add the country column
+    country_result[, country := country_name]
+    
+    # Write the result to the file incrementally
+    fwrite(country_result, file = output_file, sep = ",", append = TRUE, col.names = FALSE)
+  }, error = function(e) {
+    cat("Error processing country:", country_name, "\n")
+    cat("Error message:", e$message, "\n")
+  })
+}
+
+cat("Processing complete! Results saved to", output_file, "\n")
+```
