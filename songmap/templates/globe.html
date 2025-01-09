@@ -8,6 +8,47 @@
             margin: 0;
             overflow: hidden;
         }
+        #loadingScreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            font-family: 'Roboto', sans-serif;
+        }
+
+        #loadingScreen h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+
+        #loadingScreen p {
+            font-size: 16px;
+            max-width: 600px;
+            text-align: center;
+        }
+
+        #loadingSpinner {
+            margin-top: 20px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-top: 5px solid white;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
         #chartPane {
             position: absolute;
             bottom: 10px;
@@ -167,6 +208,13 @@
 
 </head>
 <body>
+    <div id="loadingScreen">
+        <h1>Loading Global Music Trends Visualization</h1>
+        <p>
+            Please wait while we load the data. Once loaded, you can explore trends by clicking on countries, adjusting the date slider, or selecting features from the dropdown menu.
+        </p> 
+        <div id="loadingSpinner" style="display: none;"></div>
+    </div>
     <div id="controls">
         <label for="featureSelector">Select Feature:</label>
         <select id="featureSelector">
@@ -417,8 +465,28 @@
             "Zambia": "ZM",
             "Zimbabwe": "ZW"
         };
+function showErrorPage() {
+    document.body.innerHTML = `
+        <div style="
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.9);
+            color: white;
+            font-family: 'Roboto', sans-serif;
+        ">
+            <h1>Application Unavailable</h1>
+            <p>Sorry, this application is currently down. Please try again later.</p>
+        </div>
+    `;
+}
 
+async function fetchData() {
+    try {
         fetch('https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json')
+        
             .then(res => res.json())
             .then(countries => {
                 console.log('Countries GeoJSON:', countries);
@@ -439,6 +507,14 @@
                     console.log('DS2 Data:', ds2Data);
                     console.log('Word Cloud Data:', wordCloudData);
                     console.log('Mood Score Data:', moodScoreData);
+
+                                        // Show visualization components
+                    document.getElementById('loadingScreen').style.display = 'none';
+                    document.getElementById('controls').style.display = 'block';
+                    document.getElementById('infoPanel').style.display = 'block';
+                    document.getElementById('chartPane').style.display = 'block';
+                    document.getElementById('globeViz').style.display = 'block';
+
 
                     //  store word cloud data globally
                     wordCloudData.forEach((entry) => {
@@ -1193,6 +1269,14 @@
                 }).catch(err => console.error('Error loading datasets:', err));
             })
             .catch(err => console.error('Error loading GeoJSON:', err));
+        } catch (error) {
+        console.error('Error loading data:', error);
+        showErrorPage();
+    }
+}
+
+// Call the fetchData function at the end
+fetchData();
     </script>
 </body>
 </html>
