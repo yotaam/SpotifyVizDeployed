@@ -14,9 +14,11 @@ This app visualizes a year's worth of Spotify Top 50 data across 73 countries. U
 - Click on countries for song details and word clouds
 - View historical trends via line charts
 
-### ✨ Live Demo
+### ✨ Live Demo (deprecated, no longer paying for it)
 
 https://spotifyvizdeployed.onrender.com/
+
+Demo video: https://drive.google.com/file/d/19A90NTm3j6pwN5l9hW6MwFD7uLonLdmZ/view?usp=sharing&usp=embed_facebook
 
 ---
 
@@ -72,7 +74,7 @@ Place the following CSV files into the `songmap/static/` directory:
 - `song_lyric_word_dict.csv`
 - `song_data_with_mood_scores.csv`
 
-> These files are large and were excluded from GitHub. You can regenerate them following the data wrangling steps in the report, or [download from Google Drive](https://drive.google.com).
+> These files are large and were excluded from GitHub. You can locate them [here](https://drive.google.com/drive/folders/1k8Bg9z87bUgniSat5IC0hNW40Ab3m-yg?usp=sharing)
 
 ### 4. Run the Flask app
 
