@@ -124,7 +124,7 @@ If you use this project for academic purposes, please cite the authors and origi
 ## ❤️ Authors
 
 - [Yotam Twersky](https://github.com/ytaa2021)
-- [Priya Julian](https://github.com/) *(placeholder)*
+- [Priya Julian](https://github.com/)
 
 ---
 
